@@ -10,17 +10,32 @@ def test1():
     jobs[3] = Job(3, [1, 2, 4], [4, 7, 3])
 
     js.addJobs(jobs)
-    print(js.makespan)
     print(js.criticalPath)
+    print(js.makespan)
     js.output()
 
     js.computeLmax()
-
+    # choose for machine 1
     js.add_edges_from([((1, 1), (1, 2)), ((1, 2), (1, 3))])
 
     print(js.criticalPath)
     print(js.makespan)
 
+    js.output()
+
+    js.computeLmax()
+    # choose for machine 2
+    js.add_edges_from([((2, 2), (2, 1)), ((2, 1), (2, 3))])
+
+    js.output()
+
+    js.computeLmax()
+    # choose for machine 3 and machine 4
+    js.add_edges_from([((3, 1), (3, 2))])
+    js.add_edges_from([((4, 2), (4, 3))])
+
+    js.output()
+    js.computeLmax()
 
 def test2():
     js = Shift()

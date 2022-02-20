@@ -81,7 +81,7 @@ class Jobshop(nx.DiGraph):
         self._dirty = True
         # set initial makespan
         self._makespan = -1
-        # define criticla path # todo diff criticalPath
+        # define critical path # todo diff with criticalPath?
         self._criticalPath = None
 
     def add_node(self, *args, **kwargs):
@@ -125,6 +125,11 @@ class Jobshop(nx.DiGraph):
         super().remove_edges_from(*args, **kwargs)
 
     def handleJobRouting(self, jobs):
+        """
+            add the edges of tasks
+        :param jobs:
+        :return:
+        """
         for j in jobs.values():
             # add start edge
             self.add_edge("U", (j.r[0], j.Id))
@@ -135,46 +140,57 @@ class Jobshop(nx.DiGraph):
             self.add_edge((j.r[-1], j.Id), "V")
 
     def handleJobProcessingTimes(self, jobs):
+        """
+            add the attribute(process time) of tasks
+        :param jobs:
+        :return:
+        """
         for j in jobs.values():
             # add every task and its corresponding processing time to the graph
             for m, p in zip(j.r, j.p):
                 self.add_node((m, j.Id), p=p)
 
-    def makeMachineSubgraphs(self):
+    def makeMachineSubgraph(self):
         # creates a set with machines' ids
-        machineIds = set(ij[0] for ij in self if ij[0] not in ("U", "V"))
-        # for every machine in the digraph creates a subgraph linked to the id with the corresponfing nodes
-        for m in machineIds:
-            self.machines[m] = self.subgraph(ij for ij in self if ij[0] == m not in ("U", "V"))
+        machine_ids = set(node[0] for node in self if node[0] not in ("U", "V"))
+        # for every machine in the digraph creates a subgraph linked to the id with the corresponding nodes
+        for m in machine_ids:
+            self.machines[m] = self.subgraph(node for node in self if node[0] == m and node not in ("U", "V"))
             # self.machines[m].remove_nodes_from(["U", "V"])
 
     def addJobs(self, jobs):
         # every time a job is inserted: add the jobs' edges (routing), jobs' nodes (tasks),
         # and creates a subgraph for every machine
-        self.handleJobRouting(jobs)
-        self.handleJobProcessingTimes(jobs)
-        self.makeMachineSubgraphs()
+        self.handleJobRouting(jobs)  # edge: ((task_Id, job_Id), (task_Id, job_Id))
+        self.handleJobProcessingTimes(jobs)  # node: ((task_Id, job_Id), p), p is the process time
+        self.makeMachineSubgraph()
 
     def output(self):
         # neatly outputs the jobshop digraph
         for m in sorted(self.machines):
             for j in sorted(self.machines[m]):
-                print("{}: {}".format(j, self.nodes[j]['C']))
+                print("{}: {}".format(j, self.nodes[j]['EF']))
 
     def _forward(self):
+        # Calculate the earliest occurrence time of arc according to forward topological ordering
         for n in nx.topological_sort(self):
-            S = max([self.nodes[j]['C'] for j in self.predecessors(n)], default=0)
-            self.add_node(n, S=S, C=S + self.nodes[n]['p'])
+            ES = max([self.nodes[j]['EF'] for j in self.predecessors(n)], default=0)
+            # ES==>earliest start time, EF==>earliest finished time
+            self.add_node(n, ES=ES, EF=ES + self.nodes[n]['p'])
 
     def _backward(self):
+        # Calculate the latest occurrence time of arcs according to forward topological ordering
         for n in list(reversed(list(nx.topological_sort(self)))):
-            Cp = min([self.nodes[j]['Sp'] for j in self.successors(n)], default=self._makespan)
-            self.add_node(n, Sp=Cp - self.nodes[n]['p'], Cp=Cp)
+            LF = min([self.nodes[j]['LS'] for j in self.successors(n)], default=self._makespan)
+            # LS==>latest start time LF==>latest finished time
+            self.add_node(n, LS=LF - self.nodes[n]['p'], LF=LF)
 
     def _computeCriticalPath(self):
+        # If earliest finished time == latest finished time,
+        # the node is a critical activity on the critical path
         G = set()
         for n in self:
-            if self.nodes[n]['C'] == self.nodes[n]['Cp']:
+            if self.nodes[n]['EF'] == self.nodes[n]['LF']:
                 G.add(n)
         self._criticalPath = self.subgraph(G)
 
@@ -192,7 +208,7 @@ class Jobshop(nx.DiGraph):
 
     def _update(self):
         self._forward()
-        self._makespan = max(nx.get_node_attributes(self, 'C').values())
+        self._makespan = max(nx.get_node_attributes(self, 'EF').values())
         self._backward()
         self._computeCriticalPath()
         self._dirty = False
@@ -219,13 +235,13 @@ class Shift(Jobshop):
             for ij in sorted(self.machines[i]):
                 if ij in ("U", "V"):
                     continue
-                s += "{0:>5d}".format(self.nodes[ij]['S'])
+                s += "{0:>5d}".format(self.nodes[ij]['ES'])
             print(s)
             s = "{0:<7s}".format("d:")
             for ij in sorted(self.machines[i]):
                 if ij in ("U", "V"):
                     continue
-                s += "{0:>5d}".format(self.nodes[ij]['Cp'])
+                s += "{0:>5d}".format(self.nodes[ij]['LF'])
             print(s)
             print("\n")
 
@@ -233,8 +249,8 @@ class Shift(Jobshop):
         for m in self.machines:
             lateness = {}
             for seq in permutations(self.machines[m]):
-                release = [self.nodes[j]['S'] for j in seq]
-                due = [self.nodes[j]['Cp'] for j in seq]
+                release = [self.nodes[j]['ES'] for j in seq]
+                due = [self.nodes[j]['LF'] for j in seq]
                 finish = [0] * len(release)
                 for i, j in enumerate(seq):
                     finish[i] = max(finish[i - 1], release[i]) + self.nodes[j]['p']

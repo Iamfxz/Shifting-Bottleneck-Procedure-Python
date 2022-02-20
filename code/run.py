@@ -1,6 +1,7 @@
-from classes import Job, Jobshop, Shift
+from classes import Job, Shift
 
-if __name__ == '__main__':
+
+def test1():
     js = Shift()
 
     jobs = {}
@@ -9,7 +10,7 @@ if __name__ == '__main__':
     jobs[3] = Job(3, [1, 2, 4], [4, 7, 3])
 
     js.addJobs(jobs)
-
+    print(js.makespan)
     print(js.criticalPath)
     js.output()
 
@@ -20,6 +21,8 @@ if __name__ == '__main__':
     print(js.criticalPath)
     print(js.makespan)
 
+
+def test2():
     js = Shift()
     jobs = {}
     jobs[1] = Job(1, [1, 2], [3, 4])
@@ -40,3 +43,7 @@ if __name__ == '__main__':
 
     print(js.criticalPath)
     js.output()
+
+
+if __name__ == '__main__':
+    test1()

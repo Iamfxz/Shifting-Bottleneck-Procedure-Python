@@ -18,7 +18,7 @@ def LP(jobs):
 
     prob = LpProblem("Job shop", LpMinimize)
 
-    H = sum(js.node[j]['p'] for j in js)
+    H = sum(js.nodes[j]['p'] for j in js)
     T = range(H + 1)
 
     x = LpVariable.dicts("x", [(ij, t) for ij in js for t in T], 0, 1, cat=LpInteger)
@@ -33,17 +33,17 @@ def LP(jobs):
         prob += lpSum([x[(ij, t)] for t in T]) == 1
 
     for ij in js:
-        prob += C[ij] >= js.node[ij]['p']
+        prob += C[ij] >= js.nodes[ij]['p']
 
     for ij in js:
         for k in js. predecessors(ij):
-            prob += C[ij] >= C[k] + js.node[ij]['p']
+            prob += C[ij] >= C[k] + js.nodes[ij]['p']
 
-    p = lambda ij, t: lpSum([x[(ij, u)] for u in range(t, t + js.node[ij]['p'])])
+    p = lambda ij, t: lpSum([x[(ij, u)] for u in range(t, t + js.nodes[ij]['p'])])
 
     for i in js.machines:
         for t in T:
-            prob += lpSum([p(ij, t) for ij in js.machines[i] if t <= H - js.node[ij]['p'] + 1]) <= 1
+            prob += lpSum([p(ij, t) for ij in js.machines[i] if t <= H - js.nodes[ij]['p'] + 1]) <= 1
 
     prob.solve(GUROBI())
     #prob.solve()

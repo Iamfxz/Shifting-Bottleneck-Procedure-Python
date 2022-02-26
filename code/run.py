@@ -1,6 +1,23 @@
 from classes import Job, Shift
 
 
+def test0():
+    js = Shift()
+
+    jobs = {}
+    jobs[1] = Job(1, [1, 2, 3], [10, 8, 4])
+    jobs[2] = Job(2, [2, 1, 4, 3], [8, 3, 5, 6])
+    jobs[3] = Job(3, [1, 2, 4], [4, 7, 3])
+
+    js.addJobs(jobs)
+    print(js.criticalPath)
+    print(js.makespan)
+    # js.choose_edge(compute_method=js.computeLmax)
+    js.choose_edge(compute_method=js.computeLmaxCarlier)
+    # js.output()
+    # js.singleMachineLmax()
+
+
 def test1():
     js = Shift()
 
@@ -37,6 +54,7 @@ def test1():
     js.output()
     js.computeLmax()
 
+
 def test2():
     js = Shift()
     jobs = {}
@@ -49,8 +67,8 @@ def test2():
     js.addJobs(jobs)
     print(js.criticalPath)
     js.output()
-    print(sum(js.nodes[ij]['p'] for ij in js.machines[1]))
-    print(sum(js.nodes[ij]['p'] for ij in js.machines[2]))
+    print(sum(js.nodes[ij]["p"] for ij in js.machines[1]))
+    print(sum(js.nodes[ij]["p"] for ij in js.machines[2]))
 
     seq = (3, 2, 1, 11, 4)
     for j1, j2 in zip(seq[:-1], seq[1:]):
@@ -60,5 +78,5 @@ def test2():
     js.output()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     test1()

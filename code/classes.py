@@ -1,5 +1,11 @@
+from collections import defaultdict
+
 import networkx as nx
 from itertools import permutations
+
+import numpy as np
+
+import carlier
 
 
 def argmin_kv(d):
@@ -29,16 +35,16 @@ class Jobshop(nx.DiGraph):
     """
     A class that creates a directed graph of a jobshop.
 
-    We formulate the tasks of the jobshop as nodes in a directed graph, add the processing 
-    times of the tasks as attributes to the task nodes. A flag "dirty" was added so when 
-    some topological changes are carried the method "_update" is called first to update 
-    the makespan and critical path values. Once the update is finished, the updated 
+    We formulate the tasks of the jobshop as nodes in a directed graph, add the processing
+    times of the tasks as attributes to the task nodes. A flag "dirty" was added so when
+    some topological changes are carried the method "_update" is called first to update
+    the makespan and critical path values. Once the update is finished, the updated
     makespan is returned.
 
     Methods
     -------
     handleJobRouting(jobs)
-        Creates the edges of the graph that represents the given route and also adds 
+        Creates the edges of the graph that represents the given route and also adds
         the origin and finishing nodes.
 
     handleJobProcessingTimes(jobs)
@@ -51,8 +57,8 @@ class Jobshop(nx.DiGraph):
         Handles the routine to add a jobs to the graph and the subgraphs.
 
     output()
-        Prints the output. 
-    
+        Prints the output.
+
     _forward
 
     _backward
@@ -169,28 +175,28 @@ class Jobshop(nx.DiGraph):
         # neatly outputs the jobshop digraph
         for m in sorted(self.machines):
             for j in sorted(self.machines[m]):
-                print("{}: {}".format(j, self.nodes[j]['EF']))
+                print("{}: {}".format(j, self.nodes[j]["EF"]))
 
     def _forward(self):
         # Calculate the earliest occurrence time of arc according to forward topological ordering
         for n in nx.topological_sort(self):
-            ES = max([self.nodes[j]['EF'] for j in self.predecessors(n)], default=0)
+            ES = max([self.nodes[j]["EF"] for j in self.predecessors(n)], default=0)
             # ES==>earliest start time, EF==>earliest finished time
-            self.add_node(n, ES=ES, EF=ES + self.nodes[n]['p'])
+            self.add_node(n, ES=ES, EF=ES + self.nodes[n]["p"])
 
     def _backward(self):
         # Calculate the latest occurrence time of arcs according to forward topological ordering
         for n in list(reversed(list(nx.topological_sort(self)))):
-            LF = min([self.nodes[j]['LS'] for j in self.successors(n)], default=self._makespan)
+            LF = min([self.nodes[j]["LS"] for j in self.successors(n)], default=self._makespan)
             # LS==>latest start time LF==>latest finished time
-            self.add_node(n, LS=LF - self.nodes[n]['p'], LF=LF)
+            self.add_node(n, LS=LF - self.nodes[n]["p"], LF=LF)
 
     def _computeCriticalPath(self):
         # If earliest finished time == latest finished time,
         # the node is a critical activity on the critical path
         G = set()
         for n in self:
-            if self.nodes[n]['EF'] == self.nodes[n]['LF']:
+            if self.nodes[n]["EF"] == self.nodes[n]["LF"]:
                 G.add(n)
         self._criticalPath = self.subgraph(G)
 
@@ -208,13 +214,17 @@ class Jobshop(nx.DiGraph):
 
     def _update(self):
         self._forward()
-        self._makespan = max(nx.get_node_attributes(self, 'EF').values())
+        self._makespan = max(nx.get_node_attributes(self, "EF").values())
         self._backward()
         self._computeCriticalPath()
         self._dirty = False
 
 
 class Shift(Jobshop):
+    def __init__(self):
+        super().__init__()
+        self.scheduled_machine = defaultdict(bool)
+
     def output(self):
         print("makespan: ", self.makespan)
         for i in self.machines:
@@ -229,32 +239,84 @@ class Shift(Jobshop):
             for ij in sorted(self.machines[i]):
                 if ij in ("U", "V"):
                     continue
-                s += "{0:>5d}".format(self.nodes[ij]['p'])
+                s += "{0:>5d}".format(self.nodes[ij]["p"])
             print(s)
             s = "{0:<7s}".format("r:")
             for ij in sorted(self.machines[i]):
                 if ij in ("U", "V"):
                     continue
-                s += "{0:>5d}".format(self.nodes[ij]['ES'])
+                s += "{0:>5d}".format(self.nodes[ij]["ES"])
             print(s)
             s = "{0:<7s}".format("d:")
             for ij in sorted(self.machines[i]):
                 if ij in ("U", "V"):
                     continue
-                s += "{0:>5d}".format(self.nodes[ij]['LF'])
+                s += "{0:>5d}".format(self.nodes[ij]["LF"])
             print(s)
             print("\n")
 
+    def choose_edge(self, compute_method):
+        while 1:
+            machine_lateness_seq = compute_method()
+            if len(machine_lateness_seq) == 0:
+                print(self.criticalPath)
+                print(self.makespan)
+                print("completed")
+                return True
+            machine_lateness_seq_list = sorted(machine_lateness_seq.items(), key=lambda x: x[1][0])
+            # 可能需要分支搜索相同的解
+            machine = machine_lateness_seq_list[-1][0]
+            seq = machine_lateness_seq_list[-1][1][1]
+            edges_seq = list(zip(seq[:-1], seq[1:]))
+            self.add_edges_from(edges_seq)
+            self.scheduled_machine[machine] = True
+            print(self.criticalPath)
+            print(self.makespan)
+            print(f"Choose machine: {machine}, Choose seq: {seq}")
+
     def computeLmax(self):
+        machine_lateness_seq = dict()
         for m in self.machines:
             lateness = {}
+            # todo 1 rj Lmax
             for seq in permutations(self.machines[m]):
-                release = [self.nodes[j]['ES'] for j in seq]
-                due = [self.nodes[j]['LF'] for j in seq]
+                release = [self.nodes[j]["ES"] for j in seq]
+                due = [self.nodes[j]["LF"] for j in seq]
                 finish = [0] * len(release)
                 for i, j in enumerate(seq):
-                    finish[i] = max(finish[i - 1], release[i]) + self.nodes[j]['p']
+                    finish[i] = max(finish[i - 1], release[i]) + self.nodes[j]["p"]
                 late = max([f - d for d, f in zip(due, finish)])
                 lateness[seq] = late
             s, l = argmin_kv(lateness)
-            print("Machine: {}, lateness: {}, optimal seq: {}".format(m, l, s))
+            if l > 0 or not self.scheduled_machine[m]:
+                print("Machine: {}, lateness: {}, optimal seq: {}".format(m, l, s))
+                machine_lateness_seq[m] = (l, s)
+        return machine_lateness_seq
+
+    def computeLmaxCarlier(self):
+        machine_lateness_seq = dict()
+        for m in self.machines:
+            tasks = []
+            nodes = []
+            for j in self.machines[m]:
+                tasks.append(
+                    [
+                        self.nodes[j]["ES"],
+                        self.nodes[j]["p"],
+                        self.nodes[j]["LF"],
+                    ]
+                )
+                nodes.append(j)
+            # tasks = np.array(tasks)
+            carlier.UB = 9999999
+            LB, UB, seq = carlier.Carlier_Elim(tasks)
+            node_seq = [nodes[j] for j in seq]
+            due = [self.nodes[j]["LF"] for j in node_seq]
+            finish = [0] * len(node_seq)
+            for i, j in enumerate(node_seq):
+                finish[i] = max(finish[i - 1], self.nodes[j]["ES"]) + self.nodes[j]["p"]
+            late = max([f - d for d, f in zip(due, finish)])
+            if late > 0 or not self.scheduled_machine[m]:
+                print("Machine: {}, lateness: {}, optimal seq: {}".format(m, late, node_seq))
+                machine_lateness_seq[m] = (late, node_seq)
+        return machine_lateness_seq

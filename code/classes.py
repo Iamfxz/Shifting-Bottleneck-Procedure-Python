@@ -1,3 +1,4 @@
+import sys
 from collections import defaultdict
 
 import networkx as nx
@@ -25,10 +26,16 @@ class Job(object):
     p: list - Processing times for every task
     """
 
-    def __init__(self, Id, r, p):
+    def __init__(self, Id, route, processing):
         self.Id = Id
-        self.r = r  # route
-        self.p = p  # processing times
+        self.r = route  # route
+        self.p = processing  # processing times
+
+
+# class Machine(object):
+#     def __init__(self, Id, lateness):
+#         self.Id = Id
+#         self.l = lateness
 
 
 class Jobshop(nx.DiGraph):
@@ -169,7 +176,7 @@ class Jobshop(nx.DiGraph):
         # and creates a subgraph for every machine
         self.handleJobRouting(jobs)  # edge: ((task_Id, job_Id), (task_Id, job_Id))
         self.handleJobProcessingTimes(jobs)  # node: ((task_Id, job_Id), p), p is the process time
-        self.makeMachineSubgraph()
+        self.makeMachineSubgraph()  # subgraph of the Shift to represent the machine
 
     def output(self):
         # neatly outputs the jobshop digraph
@@ -200,13 +207,11 @@ class Jobshop(nx.DiGraph):
                 G.add(n)
         self._criticalPath = self.subgraph(G)
 
-    @property
     def makespan(self):
         if self._dirty:
             self._update()
         return self._makespan
 
-    @property
     def criticalPath(self):
         if self._dirty:
             self._update()
@@ -224,6 +229,8 @@ class Shift(Jobshop):
     def __init__(self):
         super().__init__()
         self.scheduled_machine = defaultdict(bool)
+        self.lateness_max = sys.maxsize
+        self.node_sequence = None
 
     def output(self):
         print("makespan: ", self.makespan)
@@ -255,23 +262,31 @@ class Shift(Jobshop):
             print(s)
             print("\n")
 
-    def choose_edge(self, compute_method):
+    def choose_edge(self):
         while 1:
-            machine_lateness_seq = compute_method()
-            if len(machine_lateness_seq) == 0:
-                print(self.criticalPath)
-                print(self.makespan)
+            self.computeLmax()
+            sorted_machines = sorted(self.machines.items(), key=lambda x: x[1].lateness_max)
+            if sorted_machines[-1][1].lateness_max == 0:
+                finished_machine = set(self.scheduled_machine.keys())
+                all_machine = set(self.machines.keys())
+                remain_machine = all_machine - finished_machine
+                for m in remain_machine:
+                    seq = self.machines[m].node_sequence
+                    edges_seq = list(zip(seq[:-1], seq[1:]))
+                    self.add_edges_from(edges_seq)
+                    print(f"Choose machine: {m}, Choose seq: {seq}")
+                self.criticalPath()
+                self.makespan()
                 print("completed")
                 return True
-            machine_lateness_seq_list = sorted(machine_lateness_seq.items(), key=lambda x: x[1][0])
             # 可能需要分支搜索相同的解
-            machine = machine_lateness_seq_list[-1][0]
-            seq = machine_lateness_seq_list[-1][1][1]
+            machine = sorted_machines[-1][0]
+            seq = sorted_machines[-1][1].node_sequence
             edges_seq = list(zip(seq[:-1], seq[1:]))
             self.add_edges_from(edges_seq)
             self.scheduled_machine[machine] = True
-            print(self.criticalPath)
-            print(self.makespan)
+            print(self.criticalPath())
+            print(self.makespan())
             print(f"Choose machine: {machine}, Choose seq: {seq}")
 
     def computeLmax(self):
@@ -288,9 +303,10 @@ class Shift(Jobshop):
                 late = max([f - d for d, f in zip(due, finish)])
                 lateness[seq] = late
             s, l = argmin_kv(lateness)
-            if l > 0 or not self.scheduled_machine[m]:
-                print("Machine: {}, lateness: {}, optimal seq: {}".format(m, l, s))
-                machine_lateness_seq[m] = (l, s)
+            print("Machine: {}, lateness: {}, optimal seq: {}".format(m, l, s))
+            # machine_lateness_seq[m] = (l, s)
+            self.machines[m].lateness_max = l
+            self.machines[m].node_sequence = s
         return machine_lateness_seq
 
     def computeLmaxCarlier(self):

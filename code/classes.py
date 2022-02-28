@@ -264,7 +264,9 @@ class Shift(Jobshop):
 
     def choose_edge(self):
         while 1:
-            self.computeLmax()
+            # self.computeLmax()
+            self.computeLmaxEDD()
+            # self.computeLmaxCarlier()
             sorted_machines = sorted(self.machines.items(), key=lambda x: x[1].lateness_max)
             if sorted_machines[-1][1].lateness_max == 0:
                 finished_machine = set(self.scheduled_machine.keys())
@@ -274,7 +276,7 @@ class Shift(Jobshop):
                     seq = self.machines[m].node_sequence
                     edges_seq = list(zip(seq[:-1], seq[1:]))
                     self.add_edges_from(edges_seq)
-                    print(f"Choose machine: {m}, Choose seq: {seq}")
+                    # print(f"Choose machine: {m}, Choose seq: {seq}")
                 self.criticalPath()
                 self.makespan()
                 print("completed")
@@ -287,10 +289,9 @@ class Shift(Jobshop):
             self.scheduled_machine[machine] = True
             print(self.criticalPath())
             print(self.makespan())
-            print(f"Choose machine: {machine}, Choose seq: {seq}")
+            # print(f"Choose machine: {machine}, Choose seq: {seq}")
 
     def computeLmax(self):
-        machine_lateness_seq = dict()
         for m in self.machines:
             lateness = {}
             # todo 1 rj Lmax
@@ -303,14 +304,32 @@ class Shift(Jobshop):
                 late = max([f - d for d, f in zip(due, finish)])
                 lateness[seq] = late
             s, l = argmin_kv(lateness)
-            print("Machine: {}, lateness: {}, optimal seq: {}".format(m, l, s))
+            # print("Machine: {}, lateness: {}, optimal seq: {}".format(m, l, s))
             # machine_lateness_seq[m] = (l, s)
             self.machines[m].lateness_max = l
             self.machines[m].node_sequence = s
-        return machine_lateness_seq
+
+    def computeLmaxEDD(self):
+        for m in self.machines:
+            lateness = {}
+            ix_due_dict = {}
+            for j in self.machines[m]:
+                ix_due_dict[j] = self.nodes[j]["LF"]
+            # EDD Rule
+            ix_due_item = sorted(ix_due_dict.items(), key=lambda x: x[1])
+            seq = [item[0] for item in ix_due_item]
+            release = [self.nodes[j]["ES"] for j in seq]
+            due = [self.nodes[j]["LF"] for j in seq]
+            finish = [0] * len(release)
+            for i, j in enumerate(seq):
+                finish[i] = max(finish[i - 1], release[i]) + self.nodes[j]["p"]
+            late = max([f - d for d, f in zip(due, finish)])
+            # print("Machine: {}, lateness: {}, optimal seq: {}".format(m, late, seq))
+            # machine_lateness_seq[m] = (l, s)
+            self.machines[m].lateness_max = late
+            self.machines[m].node_sequence = seq
 
     def computeLmaxCarlier(self):
-        machine_lateness_seq = dict()
         for m in self.machines:
             tasks = []
             nodes = []
@@ -332,7 +351,6 @@ class Shift(Jobshop):
             for i, j in enumerate(node_seq):
                 finish[i] = max(finish[i - 1], self.nodes[j]["ES"]) + self.nodes[j]["p"]
             late = max([f - d for d, f in zip(due, finish)])
-            if late > 0 or not self.scheduled_machine[m]:
-                print("Machine: {}, lateness: {}, optimal seq: {}".format(m, late, node_seq))
-                machine_lateness_seq[m] = (late, node_seq)
-        return machine_lateness_seq
+            # print("Machine: {}, lateness: {}, optimal seq: {}".format(m, late, node_seq))
+            self.machines[m].lateness_max = late
+            self.machines[m].node_sequence = node_seq

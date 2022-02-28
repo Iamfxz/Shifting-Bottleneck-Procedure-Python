@@ -228,7 +228,7 @@ class Jobshop(nx.DiGraph):
 class Shift(Jobshop):
     def __init__(self):
         super().__init__()
-        self.scheduled_machine = defaultdict(bool)
+        self.scheduled_machine_id = set()
         self.lateness_max = sys.maxsize
         self.node_sequence = None
 
@@ -263,51 +263,63 @@ class Shift(Jobshop):
             print("\n")
 
     def choose_edge(self):
-        while 1:
-            # self.computeLmax()
-            self.computeLmaxEDD()
+        all_machine = set(self.machines.keys())
+        need_schedule_machine = all_machine - self.scheduled_machine_id
+        while len(need_schedule_machine) > 0:
+            machine_schedule_result = self.computeLmax(need_schedule_machine)
+            # self.computeLmaxEDD()
             # self.computeLmaxCarlier()
-            sorted_machines = sorted(self.machines.items(), key=lambda x: x[1].lateness_max)
-            if sorted_machines[-1][1].lateness_max == 0:
-                finished_machine = set(self.scheduled_machine.keys())
-                all_machine = set(self.machines.keys())
-                remain_machine = all_machine - finished_machine
+            sorted_lmax = sorted(machine_schedule_result.items(), key=lambda x: x[1][0])
+            machine = sorted_lmax[-1][0]  # machine with L{max}
+            lmax, node_seq = sorted_lmax[-1][1]  # the result of single machine problem
+            if lmax == 0:
+                remain_machine = all_machine - self.scheduled_machine_id
                 for m in remain_machine:
-                    seq = self.machines[m].node_sequence
-                    edges_seq = list(zip(seq[:-1], seq[1:]))
+                    node_seq = machine_schedule_result[m][1]
+                    edges_seq = list(zip(node_seq[:-1], node_seq[1:]))
                     self.add_edges_from(edges_seq)
                     # print(f"Choose machine: {m}, Choose seq: {seq}")
-                self.criticalPath()
-                self.makespan()
+                print(self.makespan())
                 print("completed")
                 return True
-            # 可能需要分支搜索相同的解
-            machine = sorted_machines[-1][0]
-            seq = sorted_machines[-1][1].node_sequence
-            edges_seq = list(zip(seq[:-1], seq[1:]))
-            self.add_edges_from(edges_seq)
-            self.scheduled_machine[machine] = True
-            print(self.criticalPath())
-            print(self.makespan())
+            edges_seq = list(zip(node_seq[:-1], node_seq[1:]))  # generate the edges
+            self.add_edges_from(edges_seq)  # add the edges of the machine
+            self.scheduled_machine_id.add(machine)  # set the machine is completed
+            self.criticalPath()  # update the attribute with CPM
+            self.reschedule()  # reschedule all machines
             # print(f"Choose machine: {machine}, Choose seq: {seq}")
 
-    def computeLmax(self):
-        for m in self.machines:
-            lateness = {}
-            # todo 1 rj Lmax
-            for seq in permutations(self.machines[m]):
-                release = [self.nodes[j]["ES"] for j in seq]
-                due = [self.nodes[j]["LF"] for j in seq]
-                finish = [0] * len(release)
-                for i, j in enumerate(seq):
-                    finish[i] = max(finish[i - 1], release[i]) + self.nodes[j]["p"]
-                late = max([f - d for d, f in zip(due, finish)])
-                lateness[seq] = late
-            s, l = argmin_kv(lateness)
-            # print("Machine: {}, lateness: {}, optimal seq: {}".format(m, l, s))
-            # machine_lateness_seq[m] = (l, s)
-            self.machines[m].lateness_max = l
-            self.machines[m].node_sequence = s
+    def reschedule(self):
+        for m in self.scheduled_machine_id:
+            self.remove_edges_from(list(self.machines[m].edges))
+            lateness, node_seq = self.singleMachinePermutation(self.machines[m])
+            edges_seq = list(zip(node_seq[:-1], node_seq[1:]))  # generate the edges
+            self.add_edges_from(edges_seq)  # add the edges of the machine
+            self.criticalPath()
+
+    def singleMachinePermutation(self, machine):
+        # 1 r_j L_max
+        # direct permutation
+        lateness = {}
+        for seq in permutations(machine):
+            release = [self.nodes[j]["ES"] for j in seq]
+            due = [self.nodes[j]["LF"] for j in seq]
+            finish = [0] * len(release)
+            for i, j in enumerate(seq):
+                finish[i] = max(finish[i - 1], release[i]) + self.nodes[j]["p"]
+            late = max([f - d for d, f in zip(due, finish)])
+            lateness[seq] = late
+        node_seq, lateness = argmin_kv(lateness)
+        return lateness, node_seq
+
+    def computeLmax(self, need_schedule_machine):
+        result_dict = {}  # {machine_id: (lateness, node_seq)}
+        for m in need_schedule_machine:
+            lateness, seq = self.singleMachinePermutation(self.machines[m])
+            # print("Machine: {}, lateness: {}, optimal seq: {}".format(m, lateness, seq))
+            # machine_lateness_seq[m] = (lateness, seq)
+            result_dict[m] = (lateness, seq)
+        return result_dict
 
     def computeLmaxEDD(self):
         for m in self.machines:

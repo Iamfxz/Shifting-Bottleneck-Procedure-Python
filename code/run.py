@@ -23,12 +23,14 @@ def read_file_to_jobs(filename):
 if __name__ == "__main__":
     dir_name = "../instances/"
     file_list = os.listdir(dir_name)
-    prefix = "dmu"  # "dmu" or 'ta'
-    num = range(16, 21)  # range(16, 21) or range(80)
+    prefix = "ta"  # "dmu" or 'ta'
+    num = range(1, 5)  # range(16, 21) or range(80)
     for p in file_list:
         temp = p.split("/")
         run_flag = False
         for n in num:
+            if n < 10:
+                n = "0" + str(n)
             if temp[-1] == prefix + str(n):
                 run_flag = True
                 break

@@ -11,6 +11,7 @@
 abz_dataset = ["abz5", "abz6", "abz7", "abz8", "abz9"]
 dmu_dataset = ["dmu16", "dmu17", "dmu18", "dmu19", "dmu20"]
 ft_dataset = ["ft06", "ft10", "ft20"]
+yn_dataset = ["yn1", "yn2", "yn3", "yn4"]
 la_dataset = [
     "la01",
     "la02",
@@ -158,4 +159,3 @@ ta_dataset = [
     "ta79",
     "ta80",
 ]
-yn_dataset = ["yn1", "yn2", "yn3", "yn4"]

@@ -3,7 +3,7 @@ from collections import defaultdict
 
 import networkx as nx
 from itertools import permutations
-
+import matplotlib.pyplot as plt
 import numpy as np
 
 import carlier
@@ -165,10 +165,10 @@ class Jobshop(nx.DiGraph):
 
     def makeMachineSubgraph(self):
         # creates a set with machines' ids
-        machine_ids = set(node[0] for node in self if node[0] not in ("U", "V"))
+        machine_ids = set(node[0] for node in self if node not in ("U", "V"))
         # for every machine in the digraph creates a subgraph linked to the id with the corresponding nodes
         for m in machine_ids:
-            self.machines[m] = self.subgraph(node for node in self if node not in ("U", "V") and node[1] == m)
+            self.machines[m] = self.subgraph(node for node in self if node not in ("U", "V") and node[0] == m)
             # self.machines[m].remove_nodes_from(["U", "V"])
 
     def addJobs(self, jobs):
@@ -187,16 +187,17 @@ class Jobshop(nx.DiGraph):
     def _forward(self):
         # Calculate the earliest occurrence time of arc according to forward topological ordering
         for n in nx.topological_sort(self):
-            ES = max([self.nodes[j]["EF"] for j in self.predecessors(n)], default=0)
-            # ES==>earliest start time, EF==>earliest finished time
-            self.add_node(n, ES=ES, EF=ES + self.nodes[n]["p"])
+            es = max([self.nodes[j]["EF"] for j in self.predecessors(n)], default=0)
+            # ES==>earliest start time(release time), EF==>earliest finished time
+            # makespan = max(EF)
+            self.add_node(n, ES=es, EF=es + self.nodes[n]["p"])
 
     def _backward(self):
         # Calculate the latest occurrence time of arcs according to forward topological ordering
         for n in list(reversed(list(nx.topological_sort(self)))):
-            LF = min([self.nodes[j]["LS"] for j in self.successors(n)], default=self._makespan)
-            # LS==>latest start time LF==>latest finished time
-            self.add_node(n, LS=LF - self.nodes[n]["p"], LF=LF)
+            lf = min([self.nodes[j]["LS"] for j in self.successors(n)], default=self._makespan)
+            # LS==>latest start time LF==>latest finished time(due date)
+            self.add_node(n, LS=lf - self.nodes[n]["p"], LF=lf)
 
     def _computeCriticalPath(self):
         # If earliest finished time == latest finished time,
@@ -262,33 +263,40 @@ class Shift(Jobshop):
             print(s)
             print("\n")
 
-    def choose_edge(self):
+    def shiftting_bottleneck(self):
         all_machine = set(self.machines.keys())
         need_schedule_machine = all_machine - self.scheduled_machine_id
-        while len(need_schedule_machine) > 0:
+        lmax = sys.maxsize
+        while len(need_schedule_machine) > 0 and lmax > 0:
             machine_schedule_result = self.computeLmax(need_schedule_machine)
-            # self.computeLmaxEDD()
-            # self.computeLmaxCarlier()
             sorted_lmax = sorted(machine_schedule_result.items(), key=lambda x: x[1][0])
             machine = sorted_lmax[-1][0]  # machine with L{max}
             lmax, node_seq = sorted_lmax[-1][1]  # the result of single machine problem
-            if lmax == 0:
-                remain_machine = all_machine - self.scheduled_machine_id
-                for m in remain_machine:
-                    node_seq = machine_schedule_result[m][1]
-                    edges_seq = list(zip(node_seq[:-1], node_seq[1:]))
-                    self.add_edges_from(edges_seq)
-                    # print(f"Choose machine: {m}, Choose seq: {seq}")
-                print(self.makespan())
-                print("completed")
-                return True
             edges_seq = list(zip(node_seq[:-1], node_seq[1:]))  # generate the edges
+            assert len(set(node_seq)) == len(node_seq)
             self.add_edges_from(edges_seq)  # add the edges of the machine
             self.criticalPath()  # update the attribute with CPM
             self.reschedule()  # reschedule all machines
             self.scheduled_machine_id.add(machine)  # set the machine is completed
             need_schedule_machine = all_machine - self.scheduled_machine_id
             # print(f"Choose machine: {machine}, Choose seq: {seq}")
+        else:
+            remain_machine = all_machine - self.scheduled_machine_id
+            for m in remain_machine:
+                node_seq = machine_schedule_result[m][1]
+                edges_seq = list(zip(node_seq[:-1], node_seq[1:]))
+                self.add_edges_from(edges_seq)
+                # print(f"Choose machine: {m}, Choose seq: {seq}")
+            job_num = len(self.machines[0])
+            machine_num = len(all_machine)
+            node_num = job_num * machine_num + 2
+            edge_num = (job_num - 1) * machine_num + job_num * (machine_num + 1)
+            assert len(self.nodes) == node_num
+            assert len(self.edges) == edge_num
+            assert list(nx.simple_cycles(nx.DiGraph(self.edges))) == []
+            # nx.draw(self)
+            # plt.show()
+            print("completed:", self.makespan())
 
     def reschedule(self):
         for m in self.scheduled_machine_id:
@@ -309,7 +317,7 @@ class Shift(Jobshop):
                     [
                         self.nodes[j]["ES"],
                         self.nodes[j]["p"],
-                        self.nodes[j]["LF"] - self.nodes[j]["p"],
+                        self._makespan - self.nodes[j]["LF"],  # tail time
                     ]
                 )
                 nodes.append(j)

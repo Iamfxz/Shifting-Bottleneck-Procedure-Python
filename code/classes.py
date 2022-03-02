@@ -168,7 +168,7 @@ class Jobshop(nx.DiGraph):
         machine_ids = set(node[0] for node in self if node[0] not in ("U", "V"))
         # for every machine in the digraph creates a subgraph linked to the id with the corresponding nodes
         for m in machine_ids:
-            self.machines[m] = self.subgraph(node for node in self if node[0] == m and node not in ("U", "V"))
+            self.machines[m] = self.subgraph(node for node in self if node not in ("U", "V") and node[1] == m)
             # self.machines[m].remove_nodes_from(["U", "V"])
 
     def addJobs(self, jobs):
@@ -284,18 +284,45 @@ class Shift(Jobshop):
                 return True
             edges_seq = list(zip(node_seq[:-1], node_seq[1:]))  # generate the edges
             self.add_edges_from(edges_seq)  # add the edges of the machine
-            self.scheduled_machine_id.add(machine)  # set the machine is completed
             self.criticalPath()  # update the attribute with CPM
             self.reschedule()  # reschedule all machines
+            self.scheduled_machine_id.add(machine)  # set the machine is completed
+            need_schedule_machine = all_machine - self.scheduled_machine_id
             # print(f"Choose machine: {machine}, Choose seq: {seq}")
 
     def reschedule(self):
         for m in self.scheduled_machine_id:
             self.remove_edges_from(list(self.machines[m].edges))
-            lateness, node_seq = self.singleMachinePermutation(self.machines[m])
+            lateness, node_seq = self.singleMachineCarlier(self.machines[m])
+            # lateness, node_seq = self.singleMachinePermutation(self.machines[m])
             edges_seq = list(zip(node_seq[:-1], node_seq[1:]))  # generate the edges
             self.add_edges_from(edges_seq)  # add the edges of the machine
             self.criticalPath()
+
+    def singleMachineCarlier(self, machine):
+        # list(nx.simple_cycles(nx.DiGraph(self.edges)))
+        tasks = []
+        nodes = []
+        for j in machine:
+            if str(j) != "U" and str(j) != "V":
+                tasks.append(
+                    [
+                        self.nodes[j]["ES"],
+                        self.nodes[j]["p"],
+                        self.nodes[j]["LF"] - self.nodes[j]["p"],
+                    ]
+                )
+                nodes.append(j)
+        # tasks = np.array(tasks)
+        carlier.UB = 9999999
+        LB, UB, seq = carlier.Carlier_Elim(tasks)
+        node_seq = [nodes[j] for j in seq]
+        due = [self.nodes[j]["LF"] for j in node_seq]
+        finish = [0] * len(node_seq)
+        for i, j in enumerate(node_seq):
+            finish[i] = max(finish[i - 1], self.nodes[j]["ES"]) + self.nodes[j]["p"]
+        late = max([f - d for d, f in zip(due, finish)])
+        return late, node_seq
 
     def singleMachinePermutation(self, machine):
         # 1 r_j L_max
@@ -309,13 +336,14 @@ class Shift(Jobshop):
                 finish[i] = max(finish[i - 1], release[i]) + self.nodes[j]["p"]
             late = max([f - d for d, f in zip(due, finish)])
             lateness[seq] = late
-        node_seq, lateness = argmin_kv(lateness)
-        return lateness, node_seq
+        node_seq, late = argmin_kv(lateness)
+        return late, node_seq
 
     def computeLmax(self, need_schedule_machine):
         result_dict = {}  # {machine_id: (lateness, node_seq)}
         for m in need_schedule_machine:
-            lateness, seq = self.singleMachinePermutation(self.machines[m])
+            # lateness, seq = self.singleMachinePermutation(self.machines[m])
+            lateness, seq = self.singleMachineCarlier(self.machines[m])
             # print("Machine: {}, lateness: {}, optimal seq: {}".format(m, lateness, seq))
             # machine_lateness_seq[m] = (lateness, seq)
             result_dict[m] = (lateness, seq)
@@ -340,29 +368,3 @@ class Shift(Jobshop):
             # machine_lateness_seq[m] = (l, s)
             self.machines[m].lateness_max = late
             self.machines[m].node_sequence = seq
-
-    def computeLmaxCarlier(self):
-        for m in self.machines:
-            tasks = []
-            nodes = []
-            for j in self.machines[m]:
-                tasks.append(
-                    [
-                        self.nodes[j]["ES"],
-                        self.nodes[j]["p"],
-                        self.nodes[j]["LF"],
-                    ]
-                )
-                nodes.append(j)
-            # tasks = np.array(tasks)
-            carlier.UB = 9999999
-            LB, UB, seq = carlier.Carlier_Elim(tasks)
-            node_seq = [nodes[j] for j in seq]
-            due = [self.nodes[j]["LF"] for j in node_seq]
-            finish = [0] * len(node_seq)
-            for i, j in enumerate(node_seq):
-                finish[i] = max(finish[i - 1], self.nodes[j]["ES"]) + self.nodes[j]["p"]
-            late = max([f - d for d, f in zip(due, finish)])
-            # print("Machine: {}, lateness: {}, optimal seq: {}".format(m, late, node_seq))
-            self.machines[m].lateness_max = late
-            self.machines[m].node_sequence = node_seq
